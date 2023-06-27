@@ -41,9 +41,6 @@
     <Reference Include="Assembly-CSharp_publicized">
       <HintPath>Libraries\Assembly-CSharp_publicized.dll</HintPath>
     </Reference>
-    <Reference Include="BepInEx">
-      <HintPath>Libraries\BepInEx.dll</HintPath>
-    </Reference>
     <Reference Include="Facepunch.Steamworks.Win64">
       <HintPath>Libraries\Facepunch.Steamworks.Win64.dll</HintPath>
     </Reference>
