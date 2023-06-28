@@ -38,4 +38,4 @@ public static Setting bindSetting(string pName, string pDescription, bool pDefau
 public static Setting bindSetting(string pName, string pDescription, int pDefaultValue, int pMax = 100, int pMin = 0, bool pPercent = false, string pIcon = null, Action<int> pAction = null)
 ````
 
-For more example and use cases see the [Example Mod](https://github.com/ApexNite/SettingsExample)
+For more examples and use cases see the [Example Mod](https://github.com/ApexNite/SettingsExample)
