@@ -9,7 +9,7 @@ To create a setting you must first define a Setting variable and initialize it w
 private static Setting settingExample;
 
 void Awake() {
-    settingFireRain = SettingsManager.bindSetting("My Setting Name", // Setting name
+    settingExample = SettingsManager.bindSetting("My Setting Name", // Setting name
         "My Setting Description", // Setting description 
         false, // Default Value (can be bool or int)
         "ui/Icons/iconGrenade"); // Icon path
