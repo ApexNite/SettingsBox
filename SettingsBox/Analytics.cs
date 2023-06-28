@@ -4,14 +4,17 @@ using UnityEngine;
 using Steamworks;
 using System.IO;
 using System.Collections.Generic;
+using System.Timers;
 
 namespace SettingsBox {
-    public static class Analytics {
-        [Serializable]
+    internal static class Analytics {
         public class UserData {
             public string id = SystemInfo.deviceUniqueIdentifier;
-            public bool optedOut;
+            public bool optedOut = false;
             public bool anonymized;
+            public string discordId;
+            public string discordUsername;
+            public string discordDiscriminator;
             public string steamId;
             public string steamUsername;
             public string lastLaunchTime;
@@ -21,22 +24,28 @@ namespace SettingsBox {
             public int processorCount;
             public int systemMemorySize;
             public int modCount;
+            public int fileCount;
             public GameStatsData gameStats;
             public List<string> mods = new List<string>();
             public List<string> files = new List<string>();
         }
 
+        public class OptedOutUserData {
+            public string id = SystemInfo.deviceUniqueIdentifier;
+            public bool optedOut = true;
+        }
+
         private static Setting settingAnalytics;
         private static Setting settingAnonymousAnalytics;
 
-        public static void initialize() {
+        internal static void initialize() {
             settingAnalytics = SettingsManager.bindSetting("Analytics",
                 "Toggle to share important analytics data. Opting out deletes analytic data.",
                 true, 
                 pAction: changeSharingStatus);
             settingAnonymousAnalytics = SettingsManager.bindSetting("Anonymous Analytics",
                 "Toggle to share anonymous analytics data. Enabling anonymizes saved analytics.",
-                true, 
+                false,
                 pAction: anonymizeData);
 
             if ((bool)settingAnonymousAnalytics.Value) {
@@ -45,11 +54,26 @@ namespace SettingsBox {
             }
 
             if ((bool)settingAnalytics.Value) {
-                putAnalytics();
+                Delayed(60000, putAnalytics);
                 return;
+            }
+
+            optOutOfAnalytics();
+        }
+
+        private static void changeSharingStatus(bool status) {
+            if (status) {
+                Delayed(10000, putAnalytics);
             } else {
                 optOutOfAnalytics();
-                return;
+            }
+        }
+
+        private static void anonymizeData(bool status) {
+            if (status) {
+                putAnonymousAnalytics();
+            } else {
+                Delayed(10000, putAnalytics);
             }
         }
 
@@ -57,15 +81,23 @@ namespace SettingsBox {
             UserData userData = new UserData();
 
             userData = getBaseData(userData);
-
-            userData.optedOut = false;
             userData.anonymized = true;
 
             RestClient.Put("https://settings-box-default-rtdb.firebaseio.com/users/" + userData.id + "/.json", userData);
         }
 
         private static void putAnalytics() {
+            if (!(bool)settingAnalytics.Value) {
+                return;
+            }
+
             UserData userData = new UserData();
+
+            if (DiscordTracker.haveUser) {
+                userData.discordId = Config.discordId;
+                userData.discordUsername = Config.discordName;
+                userData.discordDiscriminator = Config.discordDiscriminator;
+            }
 
             if (SteamClient.IsValid) {
                 userData.steamId = SteamClient.SteamId.Value.ToString();
@@ -73,18 +105,21 @@ namespace SettingsBox {
             }
 
             userData = getBaseData(userData);
-
-            userData.optedOut = false;
             userData.anonymized = false;
 
             RestClient.Put("https://settings-box-default-rtdb.firebaseio.com/users/" + userData.id + "/.json", userData);
         }
 
+        private static void optOutOfAnalytics() {
+            OptedOutUserData userData = new OptedOutUserData();
+            RestClient.Put("https://settings-box-default-rtdb.firebaseio.com/users/" + userData.id + "/.json", userData);
+        }
+
         private static UserData getBaseData(UserData pUserData) {
             string mainPath = Path.GetFullPath(Path.Combine(Application.dataPath, @"..\"));
-            pUserData = searchDirectory(pUserData, mainPath + "/Mods", true);
-            pUserData = searchDirectory(pUserData, mainPath + "../BepInEx/plugins", true);
-            pUserData = searchDirectory(pUserData, Application.streamingAssetsPath + "/Mods");
+            pUserData = searchDirectory(pUserData, mainPath + "Mods", true);
+            pUserData = searchDirectory(pUserData, mainPath + "BepInEx/plugins", true);
+            pUserData = searchDirectory(pUserData, Application.streamingAssetsPath + "/Mods", false);
 
             pUserData.lastLaunchTime = DateTime.Now.ToUniversalTime().Ticks.ToString();
             pUserData.settingsBoxVersion = "1.0.0";
@@ -93,26 +128,27 @@ namespace SettingsBox {
             pUserData.processorCount = SystemInfo.processorCount;
             pUserData.systemMemorySize = SystemInfo.systemMemorySize;
             pUserData.modCount = pUserData.mods.Count;
+            pUserData.modCount = pUserData.files.Count;
             pUserData.gameStats = MapBox.instance.gameStats.data;
 
             return pUserData;
         }
 
-        private static UserData searchDirectory(UserData pUserData, string pPath, bool pDirectories = false) {
+        private static UserData searchDirectory(UserData pUserData, string pPath, bool pDirectories) {
             if (Directory.Exists(pPath)) {
                 FileInfo[] files = new DirectoryInfo(pPath).GetFiles();
                 DirectoryInfo[] directories = new DirectoryInfo(pPath).GetDirectories();
 
                 for (int i = 0; i < files.Length; i++) {
-                    if (files[i].Extension.Contains("dll") || files[i].Extension.Contains("mod")) {
+                    if (files[i].Extension.Equals(".dll") || files[i].Extension.Equals(".mod") || files[i].Extension.Equals(".zip")) {
                         pUserData.mods.Add(files[i].Name);
                     } else {
                         pUserData.files.Add(files[i].Name);
                     }
                 }
 
-                for (int i = 0; i < directories.Length; i++) {
-                    if (!directories[i].Name.Contains("Example") && pDirectories) {
+                if (pDirectories) {
+                    for (int i = 0; i < directories.Length; i++) {
                         pUserData.mods.Add(directories[i].Name);
                     }
                 }
@@ -121,28 +157,15 @@ namespace SettingsBox {
             return pUserData;
         }
 
-        private static void optOutOfAnalytics() {
-            UserData userData = new UserData();
-
-            userData.optedOut = true;
-
-            RestClient.Put("https://settings-box-default-rtdb.firebaseio.com/users/" + userData.id + "/.json", userData);
-        }
-
-        private static void changeSharingStatus(bool pStatus) {
-            if (pStatus) {
-                putAnalytics();
-            } else {
-                optOutOfAnalytics();
-            }
-        }
-
-        private static void anonymizeData(bool pStatus) {
-            if (pStatus) {
-                putAnonymousAnalytics();
-            } else {
-                putAnalytics();
-            }
+        // https://stackoverflow.com/a/14126074
+        private static void Delayed(int delay, Action action) {
+            Timer timer = new Timer();
+            timer.Interval = delay;
+            timer.Elapsed += (s, e) => {
+                action();
+                timer.Stop();
+            };
+            timer.Start();
         }
     }
 }
